@@ -3,6 +3,7 @@ const router = express.Router();
 const { body, validationResult } = require("express-validator");
 const { customQuery } = require("../db_connection");
 const jwt = require("jsonwebtoken");
+const crypto = require("crypto");
 
 // LOGIN
 router.post(
@@ -15,17 +16,29 @@ router.post(
       return res.status(400).json({ errors: errors.array() });
 
     const { email, password } = req.body;
+
     try {
+      // Hashear la contraseña con SHA-256 para comparar con la base de datos
+      const hashedPassword = crypto
+        .createHash("sha256")
+        .update(password)
+        .digest("hex");
+
       const rows = await customQuery("CALL defaultdb.sp_login_usuario(?, ?)", [
         email,
-        password,
+        hashedPassword,
       ]);
+
       const user = rows[0][0];
       if (!user)
         return res.status(401).json({ error: "Credenciales inválidas" });
 
       const token = jwt.sign(
-        { id: user.idUsuario, email: user.correoElectronico, role: user.rol },
+        {
+          id: user.idUsuario,
+          email: user.correoElectronico,
+          role: user.rol,
+        },
         process.env.JWT_SECRET,
         { expiresIn: "1h" }
       );
@@ -53,10 +66,17 @@ router.post(
     const { email, newPassword } = req.body;
 
     try {
+      // 🔒 Hashear la nueva contraseña antes de guardarla
+      const hashedNewPassword = crypto
+        .createHash("sha256")
+        .update(newPassword)
+        .digest("hex");
+
       await customQuery("CALL defaultdb.sp_forgot_password(?, ?)", [
         email,
-        newPassword,
+        hashedNewPassword,
       ]);
+
       res.json({ message: "Contraseña actualizada correctamente" });
     } catch (err) {
       console.error("Error en forgot-password:", err);
